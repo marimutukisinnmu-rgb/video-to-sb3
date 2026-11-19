@@ -101,12 +101,42 @@ py -m video_to_sb3 input.mp4 -o output.vtsb3 --keyframe-interval 30 --compressio
 py -m video_to_sb3 input.mp4 -o output.vtsb3 --overwrite
 ~~~
 
+## 復元（デコード）
+
+VTSB3を復元するには restore サブコマンドを使います。
+
+### 可逆動画（推奨）
+
+~~~powershell
+py -m video_to_sb3 restore output.vtsb3 -o restored.mkv
+~~~
+
+- FFmpegを使ってMatroska（MKV）へ書き出します。
+- 映像CodecはFFV1で、RGB画素値を保つ可逆出力です。
+- VTSB3 v1には音声データがないため、復元されるのは映像のみです。
+- 既存ファイルを上書きする場合は --overwrite を付けます。
+- FFmpegの場所を明示する場合は --ffmpeg "C:\path\to\ffmpeg.exe" を指定できます。
+
+### 生RGB24データ
+
+FFmpegを使わず、全フレームを連続したRGB24バイト列として書き出すこともできます。
+
+~~~powershell
+py -m video_to_sb3 restore output.vtsb3 -o restored.rgb24
+~~~
+
+.rgb24 はヘッダーのない生データです。解像度・FPSは元のVTSB3ヘッダーに記録されている値を使ってください。
+
 ## 出力ファイル
 
 変換後は次の2ファイルが生成されます。
 
 - output.vtsb3: 圧縮されたRGB動画データ
 - output.vtsb3.json: 解像度、FPS、フレーム数、圧縮統計などのマニフェスト
+
+復元出力:
+- restored.mkv: FFV1で可逆復元した映像
+- restored.rgb24: ヘッダーなしのRGB24データ
 
 SB3本体に動画フレームを埋め込む処理は、今回の実装範囲外です。
 
@@ -149,18 +179,25 @@ RLEレコードは <uint32 run_length><R><G><B> で構成されます。Deltaは
 ## Pythonからの利用
 
 ~~~python
-from video_to_sb3 import VTSB3Reader, convert_video
-
-result = convert_video(
-    "input.mp4",
-    "output.vtsb3",
-    width=480,
-    height=360,
-    fps=30,
+from video_to_sb3 import (
+    VTSB3Reader,
+    convert_video,
+    restore_to_mkv,
+    restore_to_raw,
 )
 
+result = convert_video("input.mp4", "output.vtsb3", width=480, height=360, fps=30)
 print(result.compression)
 
+# 可逆MKVへの復元（FFmpegが必要）
+restored = restore_to_mkv("output.vtsb3", "restored.mkv")
+print(restored)
+
+# またはヘッダーなしRGB24データへの復元（FFmpeg不要）
+raw = restore_to_raw("output.vtsb3", "restored.rgb24")
+print(raw.bytes_written)
+
+# 低レベルAPIでフレームを1枚ずつ読むこともできます
 with VTSB3Reader("output.vtsb3") as reader:
     print(reader.header)
     first_frame = next(iter(reader))
@@ -172,10 +209,11 @@ with VTSB3Reader("output.vtsb3") as reader:
 完了対象:
 1. Python動画変換エンジン
 2. RGB圧縮・差分データ生成
+3. VTSB3復元・デコード機能
 
 今後の工程:
-3. 外部データのチャンク配信・読み込み
-4. Pen専用Scratch/TurboWarpプレイヤー生成
-5. SB3生成と再生ベンチマーク
+4. 外部データのチャンク配信・読み込み
+5. Pen専用Scratch/TurboWarpプレイヤー生成
+6. SB3生成と再生ベンチマーク
 
 SB3ファイル自体は3MB以下を目標とし、動画データは別ファイルとして扱う設計です。

@@ -5,6 +5,7 @@ import sys
 from fractions import Fraction
 from pathlib import Path
 from .converter import ConversionError, convert_video, probe_video
+from .restore import RestorationError, restore_to_mkv, restore_to_raw
 
 def _positive_int(value: str) -> int:
     try:
@@ -47,7 +48,53 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--info", action="store_true", help="変換せずに入力動画の情報だけを表示する")
     return parser
 
+def restore_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="video-to-sb3 restore",
+        description="VTSB3をRGB24データまたは可逆FFV1/MKV動画に復元します。",
+    )
+    parser.add_argument("input", type=Path, help="入力VTSB3ファイル")
+    parser.add_argument("-o", "--output", type=Path, required=True,
+                        help="出力先（.mkv または .rgb24）")
+    parser.add_argument("--ffmpeg", help="FFmpeg実行ファイルのパス（.mkv出力時）")
+    parser.add_argument("--overwrite", action="store_true", help="既存の出力ファイルを上書きする")
+    args = parser.parse_args(argv)
+
+    try:
+        suffix = args.output.suffix.lower()
+        if suffix == ".mkv":
+            result = restore_to_mkv(
+                args.input, args.output, ffmpeg_path=args.ffmpeg,
+                overwrite=args.overwrite,
+            )
+        elif suffix in {".rgb24", ".rgb"}:
+            result = restore_to_raw(
+                args.input, args.output, overwrite=args.overwrite,
+            )
+        else:
+            parser.error("出力拡張子は .mkv または .rgb24 を指定してください。")
+            return 2
+
+        print("復元完了")
+        print(f"出力: {result.output_path}")
+        print(f"形式: {result.output_format}")
+        print(f"解像度: {result.width} x {result.height}")
+        print(f"FPS: {result.fps_num}/{result.fps_den}")
+        print(f"フレーム数: {result.frame_count:,}")
+        print(f"サイズ: {result.bytes_written:,} bytes")
+        if result.output_format == "Matroska / FFV1":
+            print("音声: VTSB3には含まれていないため復元されません。")
+        return 0
+    except (RestorationError, OSError, ValueError) as exc:
+        print(f"エラー: {exc}", file=sys.stderr)
+        return 2
+
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] == "restore":
+        return restore_main(argv[1:])
+
     parser = build_parser()
     args = parser.parse_args(argv)
     if not args.info and args.output is None:
