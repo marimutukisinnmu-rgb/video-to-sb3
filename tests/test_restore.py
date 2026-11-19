@@ -12,23 +12,24 @@ from video_to_sb3.container import VTSB3Writer
 from video_to_sb3.restore import restore_to_mkv, restore_to_raw
 
 
-class RestoreTests(unittest.TestCase):
-    def make_video(self, path: Path):
-        frames = [
-            bytes((index, 20, 40, 255 - index, 60, 80) * 4)
-            for index in range(6)
-        ]
-        with VTSB3Writer(path, 2, 4, fps=Fraction(30, 1), keyframe_interval=3) as writer:
-            for frame in frames:
-                writer.write_frame(frame)
-        return frames
+def make_video(path: Path):
+    frames = [
+        bytes((index, 20, 40, 255 - index, 60, 80) * 4)
+        for index in range(6)
+    ]
+    with VTSB3Writer(path, 2, 4, fps=Fraction(30, 1), keyframe_interval=3) as writer:
+        for frame in frames:
+            writer.write_frame(frame)
+    return frames
 
+
+class RestoreTests(unittest.TestCase):
     def test_restore_to_raw_is_byte_exact(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "sample.vtsb3"
             output = root / "restored.rgb24"
-            frames = self.make_video(source)
+            frames = make_video(source)
 
             result = restore_to_raw(source, output)
 
@@ -43,7 +44,7 @@ class RestoreTests(unittest.TestCase):
             root = Path(directory)
             source = root / "sample.vtsb3"
             output = root / "restored.rgb24"
-            self.make_video(source)
+            make_video(source)
             output.write_bytes(b"keep-this")
             with self.assertRaises(FileExistsError):
                 restore_to_raw(source, output)
@@ -54,7 +55,7 @@ class RestoreTests(unittest.TestCase):
             root = Path(directory)
             source = root / "sample.vtsb3"
             output = root / "restored.rgb24"
-            frames = self.make_video(source)
+            frames = make_video(source)
 
             code = main(["restore", str(source), "-o", str(output)])
 
@@ -63,13 +64,13 @@ class RestoreTests(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpegがないためMKV統合テストをスキップ")
-class RestoreFFmpegTests(RestoreTests):
+class RestoreFFmpegTests(unittest.TestCase):
     def test_restore_to_mkv_is_rgb_lossless(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "sample.vtsb3"
             output = root / "restored.mkv"
-            frames = self.make_video(source)
+            frames = make_video(source)
 
             result = restore_to_mkv(source, output)
             decoded = subprocess.run(

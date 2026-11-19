@@ -147,6 +147,16 @@ def _stop_process(process: subprocess.Popen) -> None:
         process.wait(timeout=3)
 
 
+def _write_all(stream, data: bytes) -> None:
+    """Write a complete frame even if the OS accepts only a partial pipe write."""
+    remaining = memoryview(data)
+    while remaining:
+        written = stream.write(remaining)
+        if written is None or written <= 0:
+            raise BrokenPipeError("FFmpegの入力パイプへの書き込みが停止しました。")
+        remaining = remaining[written:]
+
+
 def restore_to_mkv(
     input_path: str | Path,
     output_path: str | Path,
@@ -206,7 +216,7 @@ def restore_to_mkv(
             broken_pipe = False
             for frame in reader.frames():
                 try:
-                    process.stdin.write(frame)
+                    _write_all(process.stdin, frame)
                 except BrokenPipeError:
                     broken_pipe = True
                     break
