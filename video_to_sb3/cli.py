@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="動画をRGB24フレームへ変換し、RLE・XOR差分圧縮したVTSB3データを生成します。",
     )
     parser.add_argument("input", type=Path, help="入力動画（MP4 / MOV / WebMなど）")
-    parser.add_argument("-o", "--output", type=Path, required=True, help="出力ファイル（例: output.vtsb3）")
+    parser.add_argument("-o", "--output", type=Path, help="出力ファイル（例: output.vtsb3）")
     parser.add_argument("--width", type=_positive_int, default=480, help="出力幅（既定: 480）")
     parser.add_argument("--height", type=_positive_int, default=360, help="出力高さ（既定: 360）")
     parser.add_argument("--fps", type=_fps_value, default=Fraction(30, 1), help="出力FPS（既定: 30）")
@@ -48,7 +48,10 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not args.info and args.output is None:
+        parser.error("--output を指定してください。")
     try:
         if args.info:
             info = probe_video(args.input, ffprobe_path=args.ffprobe)
