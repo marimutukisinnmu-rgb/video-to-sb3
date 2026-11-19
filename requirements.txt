@@ -1,0 +1,3 @@
+# Runtime: Python 3.10+ and FFmpeg/FFprobe in PATH.
+# NumPy is optional; it accelerates RLE and XOR operations.
+numpy>=1.24
