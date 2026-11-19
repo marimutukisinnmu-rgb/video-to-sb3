@@ -84,7 +84,9 @@ def probe_video(input_path: str | Path, ffprobe_path: Optional[str] = None) -> V
     width, height = int(stream.get("width") or 0), int(stream.get("height") or 0)
     if width < 1 or height < 1:
         raise ConversionError("動画の幅または高さを取得できませんでした。")
-    fps = _fraction(stream.get("avg_frame_rate") or stream.get("r_frame_rate") or "")
+    fps = _fraction(stream.get("avg_frame_rate") or "")
+    if fps <= 0:
+        fps = _fraction(stream.get("r_frame_rate") or "")
     if fps <= 0:
         raise ConversionError("動画のFPSを取得できませんでした。")
     duration_value = stream.get("duration")
