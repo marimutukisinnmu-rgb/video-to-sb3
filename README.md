@@ -1,8 +1,8 @@
 # video-to-sb3
 
-動画をRGB24フレームへ変換し、RLEとフレーム差分を使って独自形式のVTSB3データに圧縮する前処理エンジンです。
+動画をRGB24フレームへ変換し、RLEとフレーム差分を使って独自形式のVTSB3データに圧縮する前処理エンジンです。VTSB3の復元機能と、TurboWarpで外部VTSB3ファイルをPenレイヤーに再生する小さなSB3プレイヤー試作を含みます。
 
-この段階では、Scratchプロジェクト（SB3）や再生エンジンはまだ生成しません。動画データをSB3本体に埋め込まず、外部データとして分離するための基盤です。
+動画データはSB3本体に埋め込まず、外部ファイルとして選択して読み込みます。
 
 ## 実装範囲
 
@@ -212,8 +212,54 @@ with VTSB3Reader("output.vtsb3") as reader:
 3. VTSB3復元・デコード機能
 
 今後の工程:
-4. 外部データのチャンク配信・読み込み
-5. Pen専用Scratch/TurboWarpプレイヤー生成
-6. SB3生成と再生ベンチマーク
+4. TurboWarpブラウザー上での表示確認・向き/色の検証
+5. 30 FPSを目標にした再生ベンチマークと最適化
+6. チャンク先読み・シーク・安定性の改善
 
 SB3ファイル自体は3MB以下を目標とし、動画データは別ファイルとして扱う設計です。
+
+
+## SB3 player generation (TurboWarp)
+
+The player is a TurboWarp-only prototype. It updates the renderer Pen layer directly and keeps the VTSB3 video file external to the SB3.
+
+### Install the player source bundle and build the SB3
+
+After pulling the repository, extract the player source bundle into the repository root. It adds the extension, builder, local server, decoder verifier, and tests without embedding the VTSB3 video.
+
+```powershell
+git pull origin main
+Expand-Archive -LiteralPath .\dist\vtsb3_player_sources.zip -DestinationPath .\ -Force
+py tools/build_player.py
+```
+
+The generated project is `dist\vtsb3_player.sb3`. The checked-in SB3 is also only 1,269 bytes.
+
+### Start the local extension server
+
+In a separate PowerShell window, run:
+
+```powershell
+py tools/serve_player.py
+```
+
+Keep the server window open while using the project. It serves the extension at `http://localhost:8000/extensions/vtsb3player.js`.
+
+### Open and play
+
+1. Open this TurboWarp editor URL while the local server is running:
+
+   `https://turbowarp.org/editor?extension=http%3A%2F%2Flocalhost%3A8000%2Fextensions%2Fvtsb3player.js`
+
+2. In TurboWarp, load `dist\vtsb3_player.sb3` using **File → Load from your computer**.
+3. Press the green flag, click **VTSB3を選択**, and select the `.vtsb3` file.
+
+The prototype supports VTSB3 v1 at 480×360 RGB24. It indexes frame records, reads compressed payloads on demand, decodes all four codec IDs, validates CRC32, and updates the renderer's PenSkin texture. Video frames are not drawn from sprite costumes, bitmap backdrops, or stamps; the hidden controller sprite only hosts the project script.
+
+### Limitations
+
+- TurboWarp only; the custom extension is not compatible with the Scratch website.
+- Requires the local extension server and a modern browser with `DecompressionStream`.
+- VTSB3 v1 has no audio, so playback is video-only.
+- The extension accesses TurboWarp renderer internals. This prototype is tied to TurboWarp's renderer implementation.
+- JavaScript decoding and CRC32 have been checked against all 4,396 frames of the supplied VTSB3 file. Browser/Pen rendering and sustained 30 FPS still require a visual run-time benchmark on the target PC.
