@@ -1,16 +1,13 @@
 # video-to-sb3
 
-動画をRGB24フレームへ変換し、RLEとXORフレーム差分を使ってVTSB3へ圧縮するPythonツールです。VTSB3の復元機能と、TurboWarpのPenレイヤーへ外部VTSB3ファイルを再生するSB3プレイヤー試作を含みます。
-
-動画データはSB3本体に埋め込まず、ユーザーがローカルファイルを選択して読み込みます。SB3は小さなプレイヤー本体だけを持つ構成です。
+動画をRGB24フレームへ変換し、RLEとXORフレーム差分を使ってVTSB3へ圧縮するPythonツールです。VTSB3の復元機能に加え、標準Scratchブロックだけで再生するネイティブSB3生成機能と、TurboWarpのPenレイヤーを使う外部プレイヤー試作を含みます。
 
 ## 必要環境
 
 - Python 3.10以降
 - FFmpeg / FFprobe（動画変換・MKV復元に必要）
-- NumPy（任意）
+- NumPy（任意。圧縮処理を高速化）
 - Node.js 20以降（JavaScriptデコーダーのテスト用）
-- TurboWarpと最新のChrome / Edgeなど
 
 インストール:
 
@@ -27,48 +24,57 @@ py -m video_to_sb3 restore output.vtsb3 -o restored.mkv
 
 VTSB3 v1には音声トラックがないため、復元されるのは映像のみです。
 
-## TurboWarp SB3プレイヤー
+## 本家Scratch対応SB3を生成する
 
-このプレイヤーは**TurboWarp専用**です。Scratch公式サイトではカスタム拡張を実行できません。また、PenSkinの内部APIに直接アクセスするため、TurboWarpのレンダラー実装に依存します。
-
-### 1. リポジトリを更新
+VTSB3ファイルから、標準Scratchブロックだけで動くSB3を作成できます。
 
 \`\`\`powershell
-git pull origin main
+py -m video_to_sb3 build-scratch output.vtsb3 -o output_scratch.sb3
 \`\`\`
 
-### 2. ローカル拡張サーバーを起動
+生成した \`output_scratch.sb3\` をScratch公式エディターの「ファイル → コンピューターから読み込む」で開き、緑の旗を押すと再生します。TurboWarpでも利用できる標準プロジェクト構成です。
 
-プロジェクトのルートで:
+オプション:
+
+\`\`\`powershell
+# 2フレームごとに1枚を採用して容量を抑える（再生FPSも半分になる）
+py -m video_to_sb3 build-scratch output.vtsb3 -o output_scratch.sb3 --every 2
+
+# 最後まで再生したら先頭に戻って繰り返す
+py -m video_to_sb3 build-scratch output.vtsb3 -o output_scratch.sb3 --loop
+
+# 出力が100MiBを超えたら中止
+py -m video_to_sb3 build-scratch output.vtsb3 -o output_scratch.sb3 --max-size-mib 100
+\`\`\`
+
+### ネイティブScratch版の制限
+
+- カスタム拡張、PenSkin内部API、ローカルHTTPサーバーは使いません。
+- 各フレームをPNGコスチュームとしてSB3内に格納し、\`待つ → 次のコスチューム\` という標準ブロックで再生します。
+- そのため、全フレームを含めるとSB3はVTSB3よりかなり大きくなる場合があります。従来の「SB3を3MiB以下にする」方式ではありません。
+- \`--every\` でフレームを間引けます。間引くほど動きは粗くなります。
+- 現在は480×360専用です。音声は含みません。
+- 標準ブロックだけの構成を生成・検証していますが、実際のScratch公式エディターでの読み込みと再生は別途実機確認が必要です。
+
+## TurboWarp専用Penプレイヤー
+
+従来の外部VTSB3プレイヤーは**TurboWarp専用**です。Scratch公式サイトではカスタム拡張を実行できません。また、PenSkinの内部APIに直接アクセスするため、TurboWarpのレンダラー実装に依存します。
+
+### 起動
+
+リポジトリのルートでローカル拡張サーバーを起動:
 
 \`\`\`powershell
 py tools/serve_player.py
 \`\`\`
 
-サーバーは必ず \`http://localhost:8000/\` で起動します。TurboWarpはこのURLプレフィックスから読み込んだ拡張をUnsandboxedとして実行できるため、\`127.0.0.1\` や別ポートに変更しないでください。再生中もサーバーを終了しないでください。
-
-### 3. TurboWarpを開く
+TurboWarpを開く:
 
 \`https://turbowarp.org/editor?extension=http%3A%2F%2Flocalhost%3A8000%2Fextensions%2Fvtsb3player.js\`
 
-この拡張はPenレイヤーの内部にアクセスするUnsandboxed拡張です。TurboWarpがロード確認を表示した場合は、内容を確認して許可してください。
+エディターで \`dist\\vtsb3_player.sb3\` を読み込み、VTSB3 Playerパネルから \`.vtsb3\` を選んで再生します。
 
-### 4. SB3を読み込む
-
-TurboWarpエディターで **ファイル → コンピューターから読み込む** を選び、\`dist\\vtsb3_player.sb3\` を開きます。
-
-画面右上のVTSB3 Playerパネルで **VTSB3を選択** をクリックし、\`output.vtsb3\` を選択してから **再生** を押します。
-
-### プレイヤーの仕様と制限
-
-- VTSB3 v1、480×360 RGB24が対象です。
-- ファイル全体はRAMに展開せず、フレームレコードだけをインデックス化します。各フレームのpayloadは再生時に読み込みます。
-- 4種類のCodec IDをデコードし、復元後にCRC32を検証します。
-- 画面描画にはTurboWarpのPenSkinテクスチャを使い、スプライトのコスチューム、スタンプ、ビットマップ背景には動画を描画しません。
-- VTSB3 v1には音声がありません。
-- 30 FPSを目標としますが、実際の速度はPCやブラウザーに依存します。長尺での再生性能は実機で確認してください。
-
-## SB3再生成
+## TurboWarpプレイヤーSB3再生成
 
 \`\`\`powershell
 py tools/build_player.py
@@ -85,6 +91,3 @@ node --check extensions/vtsb3_decoder.js
 node --check extensions/vtsb3player.js
 node tests/test_player_js_decoder.cjs
 \`\`\`
-
-実データの全フレーム検証は、環境変数 \`VTSB3_TEST_FILE\` に実際のファイルパスを指定して実行できます。
-
