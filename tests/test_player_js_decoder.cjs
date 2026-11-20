@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const zlib = require('node:zlib');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'extensions', 'vtsb3_decoder.js'), 'utf8');
-const sandbox = {module: {exports: {}}, globalThis: {}};
+const sandbox = {module: {exports: {}}, globalThis: {}, Blob, DecompressionStream};
 vm.runInNewContext(source, sandbox, {filename: 'vtsb3_decoder.js'});
 const decoder = sandbox.module.exports;
 const inflate = async payload => new Uint8Array(zlib.inflateSync(Buffer.from(payload)));
