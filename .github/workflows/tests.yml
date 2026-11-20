@@ -1,4 +1,4 @@
-name: Python tests
+name: Python and player tests
 
 on:
   push:
@@ -21,47 +21,80 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Check media tools
         run: |
           if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
             ffmpeg -version | head -n 1
             ffprobe -version | head -n 1
           else
-            echo "FFmpeg is unavailable; its integration test will be skipped."
+            echo "FFmpeg is unavailable; media integration tests will be skipped."
           fi
 
       - name: Install Python dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Prepare TurboWarp player sources
+      - name: Verify and extract player source archive
         run: |
           python - <<'PY'
           from pathlib import Path
           from zipfile import ZipFile
-
           archive = Path("dist/vtsb3_player_sources.zip")
           required = (
               "video_to_sb3/player.py",
               "extensions/vtsb3player.js",
+              "extensions/vtsb3_decoder.js",
               "tools/build_player.py",
               "tools/serve_player.py",
-              "tools/verify_vtsb3_decoder.cjs",
+              "tools/build_source_archive.py",
               "tests/test_player_builder.py",
-              "tests/test_player_js_decoder.py",
+              "tests/test_player_js_decoder.cjs",
+              "README.md",
           )
-          with ZipFile(archive) as bundle:
-              names = set(bundle.namelist())
-              missing = [name for name in required if name not in names]
-              if missing:
-                  raise SystemExit("Player source archive is missing: " + ", ".join(missing))
-              for name in required:
-                  target = Path(name)
-                  target.parent.mkdir(parents=True, exist_ok=True)
-                  target.write_bytes(bundle.read(name))
-          PY
+          with ZipFile(archive, "r") as bundle:
+            bad = bundle.testzip()
+            if bad:
+                raise SystemExit(f"ZIP CRC failure: {bad}")
+            names = set(bundle.namelist())
+            missing = [name for name in required if name not in names]
+            if missing:
+                raise SystemExit("Player source archive is missing: " + ", ".join([ missing )))
+            for name in required:
+                data = bundle.read(name)
+                target = Path(name)
+                target.parent.mkdir(parents=True)
+                target.write_bytes(data)
+            print(f"Verified and extracted {len(required} player source files.")
+          PNA
 
       - name: Compile Python modules
         run: python -m compileall -q video_to_sb3 tools tests
 
-      - name: Run unit and integration tests
+      - name: Build and validate SB3
+        run: python tools/build_player.py
+
+      - name: Rebuild and validate source archive
+        run: python tools/build_source_archive.py
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check extensions/vtsb3_decoder.js
+          node --check extensions/vtsb3player.js
+
+      - name: Run Python tests
         run: python -m unittest discover -s tests -v
+
+      - name: Run JavaScript decoder tests
+        run: node tests/test_player_js_decoder.cjs
+
+      - name: Upload player artifacts
+        uses: actions/upload-artifact@vd
+        with:
+          name: vtsb3-player
+          path: |
+            dist/vtsb3_player.sb3
+            dist/vtsb3_player_sources.zip
