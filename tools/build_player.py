@@ -1,9 +1,14 @@
 from __future__ import annotations
 import argparse
+import sys
 from pathlib import Path
-from video_to_sb3.player import DEFAULT_EXTENSION_URL, build_player_sb3
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from video_to_sb3.player import DEFAULT_EXTENSION_URL, build_player_sb3
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the external-data TurboWarp VTSB3 player SB3.")
@@ -17,6 +22,7 @@ def main() -> int:
     if path.stat().st_size >= 3 * 1024 * 1024:
         raise SystemExit("SB3 exceeds the 3 MiB target.")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
