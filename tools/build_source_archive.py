@@ -5,10 +5,16 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = (
-    "video_to_sb3/player.py",
-    "video_to_sb3/scratch_sb3.py",
-    "video_to_sb3/cli.py",
     "video_to_sb3/__init__.py",
+    "video_to_sb3/__main__.py",
+    "video_to_sb3/cli.py",
+    "video_to_sb3/codec.py",
+    "video_to_sb3/container.py",
+    "video_to_sb3/converter.py",
+    "video_to_sb3/player.py",
+    "video_to_sb3/restore.py",
+    "video_to_sb3/scratch_sb3.py",
+    "requirements.txt",
     "extensions/vtsb3player.js",
     "extensions/vtsb3_decoder.js",
     "tools/build_player.py",
