@@ -1,4 +1,4 @@
-"""Command-line interface for the video-to-SB3 preprocessing stage."""
+"""Command-line interface for VTSB3 conversion, restoration, and SB3 building."""
 from __future__ import annotations
 import argparse
 import sys
@@ -6,6 +6,8 @@ from fractions import Fraction
 from pathlib import Path
 from .converter import ConversionError, convert_video, probe_video
 from .restore import RestorationError, restore_to_mkv, restore_to_raw
+from .scratch_sb3 import ScratchSB3Error, build_native_scratch_sb3
+
 
 def _positive_int(value: str) -> int:
     try:
@@ -16,6 +18,7 @@ def _positive_int(value: str) -> int:
         raise argparse.ArgumentTypeError("1以上の値を指定してください。")
     return number
 
+
 def _fps_value(value: str) -> Fraction:
     try:
         fps = Fraction(value)
@@ -24,6 +27,7 @@ def _fps_value(value: str) -> Fraction:
     if fps <= 0:
         raise argparse.ArgumentTypeError("FPSは0より大きい値を指定してください。")
     return fps
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -47,6 +51,63 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-manifest", action="store_true", help="JSONマニフェストを生成しない")
     parser.add_argument("--info", action="store_true", help="変換せずに入力動画の情報だけを表示する")
     return parser
+
+
+def _count_sb3_costumes(path: Path) -> int:
+    import json
+    import zipfile
+    with zipfile.ZipFile(path, "r") as archive:
+        project = json.loads(archive.read("project.json").decode("utf-8"))
+    return len(project["targets"][1]["costumes"])
+
+
+def build_scratch_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="video-to-sb3 build-scratch",
+        description="VTSB3から標準Scratchブロックだけで動くSB3を生成します。",
+    )
+    parser.add_argument("input", type=Path, help="入力VTSB3ファイル")
+    parser.add_argument("-o", "--output", type=Path, required=True, help="出力SB3ファイル")
+    parser.add_argument("--every", type=_positive_int, default=1,
+                        help="何フレームごとに1枚をSB3へ含めるか（既定: 1、間引きなし）")
+    parser.add_argument("--loop", action="store_true", help="動画を最後まで再生した後、先頭に戻って繰り返す")
+    parser.add_argument("--overwrite", action="store_true", help="既存の出力ファイルを上書きする")
+    parser.add_argument("--max-size-mib", type=_positive_int,
+                        help="出力サイズ上限（MiB）。超えた場合は途中で中止する")
+    args = parser.parse_args(argv)
+
+    output = args.output.expanduser().resolve()
+    max_size = args.max_size_mib * 1024 * 1024 if args.max_size_mib else None
+    last_printed = -1
+
+    def progress(decoded: int, total: int, included: int) -> None:
+        nonlocal last_printed
+        if decoded == total or decoded - last_printed >= 30:
+            print(f"\rSB3生成中: {decoded:,}/{total:,} frames | コスチューム {included:,}",
+                  end="", file=sys.stderr, flush=True)
+            last_printed = decoded
+
+    try:
+        result = build_native_scratch_sb3(
+            args.input,
+            output,
+            every=args.every,
+            loop=args.loop,
+            overwrite=args.overwrite,
+            max_size_bytes=max_size,
+            progress_callback=progress,
+        )
+        print("\n生成完了")
+        print(f"SB3: {result}")
+        print(f"サイズ: {result.stat().st_size:,} bytes ({result.stat().st_size / 1048576:.2f} MiB)")
+        print(f"コスチューム数: {_count_sb3_costumes(result):,}")
+        print("拡張機能: なし（標準Scratchブロックのみ）")
+        print("再生: 緑の旗")
+        return 0
+    except (ScratchSB3Error, OSError, ValueError) as exc:
+        print(f"\nエラー: {exc}", file=sys.stderr)
+        return 2
+
 
 def restore_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
@@ -89,11 +150,14 @@ def restore_main(argv: list[str]) -> int:
         print(f"エラー: {exc}", file=sys.stderr)
         return 2
 
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
     if argv and argv[0] == "restore":
         return restore_main(argv[1:])
+    if argv and argv[0] == "build-scratch":
+        return build_scratch_main(argv[1:])
 
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -136,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ConversionError, OSError, ValueError) as exc:
         print(f"エラー: {exc}", file=sys.stderr)
         return 2
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
